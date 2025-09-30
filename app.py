@@ -87,10 +87,12 @@ def run_huggingface_feature(feature, text):
             return str(result)
 
         elif feature == "Translation (EN → FR)":
-            result = hf_client.translation(text, model="Helsinki-NLP/opus-mt-en-fr")
-            if isinstance(result, list) and result and "translation_text" in result[0]:
-                return result[0]["translation_text"]
-            return str(result)
+    result = hf_client.translation(text, model="Helsinki-NLP/opus-mt-en-fr")
+    # result is a TranslationOutput object
+    if hasattr(result, "translation_text"):
+        return result.translation_text
+    return str(result)
+
 
         elif feature == "Sentiment Analysis":
             result = hf_client.text_classification(
