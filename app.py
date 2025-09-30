@@ -100,8 +100,11 @@ def run_huggingface_feature(feature, text):
             return str(result)
 
         elif feature == "Sentiment Analysis":
-            # Option 2: Use task instead of specific model
-            result = hf_client.text_classification(text, task="sentiment-analysis")
+            # Fixed: Use a hosted model instead of task
+            result = hf_client.text_classification(
+                text,
+                model="cardiffnlp/twitter-roberta-base-sentiment"
+            )
             if isinstance(result, list) and result:
                 return f"Sentiment: {result[0]['label']} (score: {result[0]['score']:.2f})"
             return str(result)
