@@ -78,7 +78,6 @@ def run_huggingface_feature(feature, text):
 
     try:
         if feature == "Summarization":
-            # summarization expects just the text
             result = hf_client.summarization(text, model="facebook/bart-large-cnn")
             if isinstance(result, dict) and "summary_text" in result:
                 return result["summary_text"]
@@ -87,12 +86,10 @@ def run_huggingface_feature(feature, text):
             return str(result)
 
         elif feature == "Translation (EN → FR)":
-    result = hf_client.translation(text, model="Helsinki-NLP/opus-mt-en-fr")
-    # result is a TranslationOutput object
-    if hasattr(result, "translation_text"):
-        return result.translation_text
-    return str(result)
-
+            result = hf_client.translation(text, model="Helsinki-NLP/opus-mt-en-fr")
+            if hasattr(result, "translation_text"):
+                return result.translation_text
+            return str(result)
 
         elif feature == "Sentiment Analysis":
             result = hf_client.text_classification(
@@ -106,7 +103,6 @@ def run_huggingface_feature(feature, text):
         return f"⚠️ Hugging Face request failed: {e}"
 
     return None
-
 
 # --- Display chat messages ---
 for message in st.session_state.messages:
