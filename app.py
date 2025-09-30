@@ -9,23 +9,18 @@ load_dotenv()
 
 # --- Page Configuration ---
 st.set_page_config(
-    page_title="AIVORA 🤖", 
-    page_icon="✨", 
-    layout="centered", 
+    page_title="AIVORA 🤖",
+    page_icon="✨",
+    layout="centered",
     initial_sidebar_state="auto"
 )
 
 # --- Access API Keys (Cloud -> Secrets, Local -> .env) ---
 secret_key = (
-    st.secrets.get("api", {}).get("GOOGLE_API_KEY")   # Streamlit Cloud
-    if "api" in st.secrets 
-    else os.getenv("GOOGLE_API_KEY")                  # Local .env
+    st.secrets.get("api", {}).get("GOOGLE_API_KEY") if "api" in st.secrets else os.getenv("GOOGLE_API_KEY")
 )
-
 hf_key = (
-    st.secrets.get("api", {}).get("HUGGINGFACE_API_KEY")
-    if "api" in st.secrets
-    else os.getenv("HUGGINGFACE_API_KEY")
+    st.secrets.get("api", {}).get("HUGGINGFACE_API_KEY") if "api" in st.secrets else os.getenv("HUGGINGFACE_API_KEY")
 )
 
 if not secret_key:
@@ -68,8 +63,20 @@ if st.sidebar.button("Clear Chat History", type="secondary"):
 # --- Sidebar Extra Features ---
 feature_choice = st.sidebar.selectbox(
     "✨ Extra AI Features (Hugging Face)",
-    ["None", "Summarization", "Translation (EN → FR)", "Sentiment Analysis"]
+    ["None", "Summarization", "Translation", "Sentiment Analysis"]
 )
+
+# For translation target languages
+language_choice = st.sidebar.selectbox(
+    "Translate to (if Translation selected):",
+    ["French", "Spanish", "German", "Japanese"]
+)
+model_map = {
+    "French": "Helsinki-NLP/opus-mt-en-fr",
+    "Spanish": "Helsinki-NLP/opus-mt-en-es",
+    "German": "Helsinki-NLP/opus-mt-en-de",
+    "Japanese": "Helsinki-NLP/opus-mt-en-ja"
+}
 
 # --- Helper function for Hugging Face features ---
 def run_huggingface_feature(feature, text):
@@ -79,22 +86,22 @@ def run_huggingface_feature(feature, text):
     try:
         if feature == "Summarization":
             result = hf_client.summarization(text, model="facebook/bart-large-cnn")
-            if isinstance(result, dict) and "summary_text" in result:
-                return result["summary_text"]
-            if isinstance(result, list) and result and "summary_text" in result[0]:
-                return result[0]["summary_text"]
+            if hasattr(result, "summary_text"):
+                return result.summary_text
+            if isinstance(result, list) and result and hasattr(result[0], "summary_text"):
+                return result[0].summary_text
             return str(result)
 
-        elif feature == "Translation (EN → FR)":
-            result = hf_client.translation(text, model="Helsinki-NLP/opus-mt-en-fr")
+        elif feature == "Translation":
+            translation_model = model_map.get(language_choice, "Helsinki-NLP/opus-mt-en-fr")
+            result = hf_client.translation(text, model=translation_model)
             if hasattr(result, "translation_text"):
                 return result.translation_text
             return str(result)
 
         elif feature == "Sentiment Analysis":
-            result = hf_client.text_classification(
-                text, model="distilbert-base-uncased-finetuned-sst-2-english"
-            )
+            # Option 2: Use task instead of specific model
+            result = hf_client.text_classification(text, task="sentiment-analysis")
             if isinstance(result, list) and result:
                 return f"Sentiment: {result[0]['label']} (score: {result[0]['score']:.2f})"
             return str(result)
