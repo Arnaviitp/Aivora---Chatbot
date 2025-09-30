@@ -62,7 +62,7 @@ if st.sidebar.button("Clear Chat History", type="secondary"):
 
 # --- Sidebar Extra Features ---
 feature_choice = st.sidebar.selectbox(
-    "✨ Extra AI Features (Hugging Face)",
+    "✨ Extra AI Features (AI-Super)",
     ["None", "Summarization", "Translation", "Sentiment Analysis"]
 )
 
