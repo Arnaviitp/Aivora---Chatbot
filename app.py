@@ -76,31 +76,35 @@ def run_huggingface_feature(feature, text):
     if not hf_client:
         return "⚠️ Hugging Face API not configured."
 
-    if feature == "Summarization":
-        result = hf_client.summarization(
-            model="facebook/bart-large-cnn",
-            inputs=text,
-            max_length=100,
-            min_length=25,
-            do_sample=False,
-        )
-        return result["summary_text"]
+    try:
+        if feature == "Summarization":
+            # summarization expects just the text
+            result = hf_client.summarization(text, model="facebook/bart-large-cnn")
+            if isinstance(result, dict) and "summary_text" in result:
+                return result["summary_text"]
+            if isinstance(result, list) and result and "summary_text" in result[0]:
+                return result[0]["summary_text"]
+            return str(result)
 
-    elif feature == "Translation (EN → FR)":
-        result = hf_client.translation(
-            model="Helsinki-NLP/opus-mt-en-fr",
-            inputs=text
-        )
-        return result[0]["translation_text"]
+        elif feature == "Translation (EN → FR)":
+            result = hf_client.translation(text, model="Helsinki-NLP/opus-mt-en-fr")
+            if isinstance(result, list) and result and "translation_text" in result[0]:
+                return result[0]["translation_text"]
+            return str(result)
 
-    elif feature == "Sentiment Analysis":
-        result = hf_client.text_classification(
-            model="distilbert-base-uncased-finetuned-sst-2-english",
-            inputs=text
-        )
-        return f"Sentiment: {result[0]['label']} (score: {result[0]['score']:.2f})"
+        elif feature == "Sentiment Analysis":
+            result = hf_client.text_classification(
+                text, model="distilbert-base-uncased-finetuned-sst-2-english"
+            )
+            if isinstance(result, list) and result:
+                return f"Sentiment: {result[0]['label']} (score: {result[0]['score']:.2f})"
+            return str(result)
+
+    except Exception as e:
+        return f"⚠️ Hugging Face request failed: {e}"
 
     return None
+
 
 # --- Display chat messages ---
 for message in st.session_state.messages:
