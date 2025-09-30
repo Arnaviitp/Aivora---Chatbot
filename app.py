@@ -100,13 +100,22 @@ def run_huggingface_feature(feature, text):
             return str(result)
 
         elif feature == "Sentiment Analysis":
-            # Fixed: Use a hosted model instead of task
+            # Use hosted model
             result = hf_client.text_classification(
                 text,
                 model="cardiffnlp/twitter-roberta-base-sentiment"
             )
+
+            # Map labels to human-readable sentiments
+            sentiment_map = {
+                "LABEL_0": "Negative",
+                "LABEL_1": "Neutral",
+                "LABEL_2": "Positive"
+            }
+
             if isinstance(result, list) and result:
-                return f"Sentiment: {result[0]['label']} (score: {result[0]['score']:.2f})"
+                label = sentiment_map.get(result[0]['label'], result[0]['label'])
+                return f"Sentiment: {label} (score: {result[0]['score']:.2f})"
             return str(result)
 
     except Exception as e:
