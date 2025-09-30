@@ -44,7 +44,7 @@ def stream_deepseek(prompt):
         "Content-Type": "application/json"
     }
     payload = {
-        "model": "deepseek-chat-v3.1:free",   # Free streaming model
+        "model": "deepseek-chat-v3.1",   # Free streaming model
         "messages": [{"role": "user", "content": prompt}],
         "temperature": 0.7,
         "stream": True
