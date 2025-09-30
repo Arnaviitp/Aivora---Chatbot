@@ -1,8 +1,9 @@
 import os
 import streamlit as st
-import google.generativeai as genai
 from dotenv import load_dotenv
 from huggingface_hub import InferenceClient
+import requests
+import sseclient
 
 # --- Load .env for local development ---
 load_dotenv()
@@ -15,24 +16,16 @@ st.set_page_config(
     initial_sidebar_state="auto"
 )
 
-# --- Access API Keys (Cloud -> Secrets, Local -> .env) ---
-secret_key = (
-    st.secrets.get("api", {}).get("GOOGLE_API_KEY") if "api" in st.secrets else os.getenv("GOOGLE_API_KEY")
+# --- Access API Keys ---
+deepseek_key = (
+    st.secrets.get("api", {}).get("DEEPSEEK_API_KEY") if "api" in st.secrets else os.getenv("DEEPSEEK_API_KEY")
 )
 hf_key = (
     st.secrets.get("api", {}).get("HUGGINGFACE_API_KEY") if "api" in st.secrets else os.getenv("HUGGINGFACE_API_KEY")
 )
 
-if not secret_key:
-    st.error("🚨 GOOGLE_API_KEY not found! Please set it in Streamlit Secrets (Cloud) or .env (Local).")
-    st.stop()
-
-# --- Configure Gemini ---
-try:
-    genai.configure(api_key=secret_key)
-    model = genai.GenerativeModel('gemini-2.5-flash')
-except Exception as e:
-    st.error(f"Failed to initialize Gemini model: {e}")
+if not deepseek_key:
+    st.error("🚨 DEEPSEEK_API_KEY not found! Please set it in Streamlit Secrets (Cloud) or .env (Local).")
     st.stop()
 
 # --- Configure Hugging Face ---
@@ -43,42 +36,45 @@ if hf_key:
     except Exception as e:
         st.error(f"Failed to initialize Hugging Face client: {e}")
 
-# --- App Title and Description ---
-st.markdown("<h1 style='text-align: center; color: #4CAF50;'>🤖 AIVORA ✨</h1>", unsafe_allow_html=True)
-st.markdown(
-    "<p style='text-align: center; color: #666; font-size: 1.1em;'>Your Super Intelligent Assistant powered by AI.</p>",
-    unsafe_allow_html=True
-)
-st.divider()
+# --- Streaming helper: DeepSeek Chat ---
+def stream_deepseek(prompt):
+    url = "https://api.deepseek.com/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {deepseek_key}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "model": "deepseek-chat-v3.1:free",   # Free streaming model
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.7,
+        "stream": True
+    }
 
-# --- Initialize chat history ---
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+    try:
+        response = requests.post(url, headers=headers, json=payload, stream=True, timeout=120)
+        response.raise_for_status()
 
-# --- Clear Chat Button ---
-if st.sidebar.button("Clear Chat History", type="secondary"):
-    st.session_state.messages = []
-    st.rerun()
+        # SSEClient to handle streaming
+        client = sseclient.SSEClient(response)
+        full_text = ""
+        for event in client.events():
+            if event.data == "[DONE]":
+                break
+            try:
+                data = event.data
+                if "choices" in data:
+                    import json
+                    parsed = json.loads(data)
+                    delta = parsed["choices"][0]["delta"].get("content", "")
+                    full_text += delta
+                    yield delta
+            except Exception:
+                continue
+        yield full_text
+    except Exception as e:
+        yield f"⚠️ DeepSeek streaming failed: {e}"
 
-# --- Sidebar Extra Features ---
-feature_choice = st.sidebar.selectbox(
-    "✨ Extra AI Features (AI-Super)",
-    ["None", "Summarization", "Translation", "Sentiment Analysis"]
-)
-
-# For translation target languages
-language_choice = st.sidebar.selectbox(
-    "Translate to (if Translation selected):",
-    ["French", "Spanish", "German", "Japanese"]
-)
-model_map = {
-    "French": "Helsinki-NLP/opus-mt-en-fr",
-    "Spanish": "Helsinki-NLP/opus-mt-en-es",
-    "German": "Helsinki-NLP/opus-mt-en-de",
-    "Japanese": "Helsinki-NLP/opus-mt-en-ja"
-}
-
-# --- Helper function for Hugging Face features ---
+# --- Hugging Face Extra Features ---
 def run_huggingface_feature(feature, text):
     if not hf_client:
         return "⚠️ Hugging Face API not configured."
@@ -93,6 +89,12 @@ def run_huggingface_feature(feature, text):
             return str(result)
 
         elif feature == "Translation":
+            model_map = {
+                "French": "Helsinki-NLP/opus-mt-en-fr",
+                "Spanish": "Helsinki-NLP/opus-mt-en-es",
+                "German": "Helsinki-NLP/opus-mt-en-de",
+                "Japanese": "Helsinki-NLP/opus-mt-en-ja"
+            }
             translation_model = model_map.get(language_choice, "Helsinki-NLP/opus-mt-en-fr")
             result = hf_client.translation(text, model=translation_model)
             if hasattr(result, "translation_text"):
@@ -100,19 +102,11 @@ def run_huggingface_feature(feature, text):
             return str(result)
 
         elif feature == "Sentiment Analysis":
-            # Use hosted model
             result = hf_client.text_classification(
                 text,
                 model="cardiffnlp/twitter-roberta-base-sentiment"
             )
-
-            # Map labels to human-readable sentiments
-            sentiment_map = {
-                "LABEL_0": "Negative",
-                "LABEL_1": "Neutral",
-                "LABEL_2": "Positive"
-            }
-
+            sentiment_map = {"LABEL_0": "Negative", "LABEL_1": "Neutral", "LABEL_2": "Positive"}
             if isinstance(result, list) and result:
                 label = sentiment_map.get(result[0]['label'], result[0]['label'])
                 return f"Sentiment: {label} (score: {result[0]['score']:.2f})"
@@ -123,16 +117,36 @@ def run_huggingface_feature(feature, text):
 
     return None
 
-# --- Display chat messages ---
+# --- UI Title ---
+st.markdown("<h1 style='text-align: center; color: #4CAF50;'>🤖 AIVORA ✨</h1>", unsafe_allow_html=True)
+st.markdown(
+    "<p style='text-align: center; color: #666; font-size: 1.1em;'>Powered by DeepSeek V3.1 (Free Streaming) 🚀</p>",
+    unsafe_allow_html=True
+)
+st.divider()
+
+# --- Initialize Chat ---
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+# --- Sidebar ---
+if st.sidebar.button("Clear Chat History", type="secondary"):
+    st.session_state.messages = []
+    st.rerun()
+
+feature_choice = st.sidebar.selectbox("✨ Extra AI Features (AI-Super)", ["None", "Summarization", "Translation", "Sentiment Analysis"])
+language_choice = st.sidebar.selectbox("Translate to (if Translation selected):", ["French", "Spanish", "German", "Japanese"])
+
+# --- Display Chat History ---
 for message in st.session_state.messages:
     avatar = "🧑‍💻" if message["role"] == "user" else "🤖"
     with st.chat_message(message["role"], avatar=avatar):
         st.markdown(message["content"])
 
-# --- Welcome Message ---
+# --- Welcome ---
 if not st.session_state.messages:
-    st.info("👋 Hello! I'm AIVORA, your personal AI assistant. How can I help you today?")
-    st.markdown("Feel free to ask me anything!")
+    st.info("👋 Hello! I'm AIVORA (DeepSeek Streaming). Ask me anything!")
+    st.markdown("Feel free to test streaming responses ✨")
 
 # --- Chat Input ---
 if prompt := st.chat_input("Ask AIVORA anything..."):
@@ -141,37 +155,24 @@ if prompt := st.chat_input("Ask AIVORA anything..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
 
     with st.chat_message("assistant", avatar="🤖"):
-        with st.spinner("AIVORA is thinking..."):
-            try:
-                # Step 1: Get Gemini response
-                response_obj = model.generate_content(prompt)
-                if response_obj and hasattr(response_obj, 'text'):
-                    response = response_obj.text
-                elif response_obj and response_obj.candidates:
-                    response = response_obj.candidates[0].content.parts[0].text
-                else:
-                    response = "I'm sorry, I couldn't generate a response. Please try again."
+        with st.spinner("AIVORA is typing..."):
+            placeholder = st.empty()
+            streamed_text = ""
+            for chunk in stream_deepseek(prompt):
+                streamed_text += chunk
+                placeholder.markdown(streamed_text)
 
-                # Step 2: Apply Hugging Face feature if selected
-                if feature_choice != "None":
-                    extra_output = run_huggingface_feature(feature_choice, prompt)
-                    response += f"\n\n---\n✨ **{feature_choice} Result:**\n{extra_output}"
+            # Extra Hugging Face feature
+            if feature_choice != "None":
+                extra_output = run_huggingface_feature(feature_choice, prompt)
+                streamed_text += f"\n\n---\n✨ **{feature_choice} Result:**\n{extra_output}"
+                placeholder.markdown(streamed_text)
 
-                st.markdown(response)
-
-            except Exception as e:
-                response = f"Oops! Something went wrong: {e}"
-                st.error(response)
-
-        st.session_state.messages.append({"role": "assistant", "content": response})
+        st.session_state.messages.append({"role": "assistant", "content": streamed_text})
 
 # --- Footer ---
 st.divider()
 st.markdown(
-    """
-    <p style='text-align: center; color: #888; font-size: 0.8em;'>
-        Created by Arnav Anand IITP.
-    </p>
-    """,
+    "<p style='text-align: center; color: #888; font-size: 0.8em;'>Created by Arnav Anand IITP.</p>",
     unsafe_allow_html=True
 )
