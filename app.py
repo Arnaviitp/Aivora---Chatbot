@@ -1,8 +1,8 @@
 import os
 import streamlit as st
 import google.generativeai as genai
-import time
 from dotenv import load_dotenv
+from huggingface_hub import InferenceClient
 
 # --- Load .env for local development ---
 load_dotenv()
@@ -15,11 +15,17 @@ st.set_page_config(
     initial_sidebar_state="auto"
 )
 
-# --- Access API Key (Cloud -> Secrets, Local -> .env) ---
+# --- Access API Keys (Cloud -> Secrets, Local -> .env) ---
 secret_key = (
     st.secrets.get("api", {}).get("GOOGLE_API_KEY")   # Streamlit Cloud
     if "api" in st.secrets 
     else os.getenv("GOOGLE_API_KEY")                  # Local .env
+)
+
+hf_key = (
+    st.secrets.get("api", {}).get("HUGGINGFACE_API_KEY")
+    if "api" in st.secrets
+    else os.getenv("HUGGINGFACE_API_KEY")
 )
 
 if not secret_key:
@@ -33,6 +39,14 @@ try:
 except Exception as e:
     st.error(f"Failed to initialize Gemini model: {e}")
     st.stop()
+
+# --- Configure Hugging Face ---
+hf_client = None
+if hf_key:
+    try:
+        hf_client = InferenceClient(token=hf_key)
+    except Exception as e:
+        st.error(f"Failed to initialize Hugging Face client: {e}")
 
 # --- App Title and Description ---
 st.markdown("<h1 style='text-align: center; color: #4CAF50;'>🤖 AIVORA ✨</h1>", unsafe_allow_html=True)
@@ -50,6 +64,43 @@ if "messages" not in st.session_state:
 if st.sidebar.button("Clear Chat History", type="secondary"):
     st.session_state.messages = []
     st.rerun()
+
+# --- Sidebar Extra Features ---
+feature_choice = st.sidebar.selectbox(
+    "✨ Extra AI Features (Hugging Face)",
+    ["None", "Summarization", "Translation (EN → FR)", "Sentiment Analysis"]
+)
+
+# --- Helper function for Hugging Face features ---
+def run_huggingface_feature(feature, text):
+    if not hf_client:
+        return "⚠️ Hugging Face API not configured."
+
+    if feature == "Summarization":
+        result = hf_client.summarization(
+            model="facebook/bart-large-cnn",
+            inputs=text,
+            max_length=100,
+            min_length=25,
+            do_sample=False,
+        )
+        return result["summary_text"]
+
+    elif feature == "Translation (EN → FR)":
+        result = hf_client.translation(
+            model="Helsinki-NLP/opus-mt-en-fr",
+            inputs=text
+        )
+        return result[0]["translation_text"]
+
+    elif feature == "Sentiment Analysis":
+        result = hf_client.text_classification(
+            model="distilbert-base-uncased-finetuned-sst-2-english",
+            inputs=text
+        )
+        return f"Sentiment: {result[0]['label']} (score: {result[0]['score']:.2f})"
+
+    return None
 
 # --- Display chat messages ---
 for message in st.session_state.messages:
@@ -71,8 +122,8 @@ if prompt := st.chat_input("Ask AIVORA anything..."):
     with st.chat_message("assistant", avatar="🤖"):
         with st.spinner("AIVORA is thinking..."):
             try:
+                # Step 1: Get Gemini response
                 response_obj = model.generate_content(prompt)
-
                 if response_obj and hasattr(response_obj, 'text'):
                     response = response_obj.text
                 elif response_obj and response_obj.candidates:
@@ -80,7 +131,13 @@ if prompt := st.chat_input("Ask AIVORA anything..."):
                 else:
                     response = "I'm sorry, I couldn't generate a response. Please try again."
 
+                # Step 2: Apply Hugging Face feature if selected
+                if feature_choice != "None":
+                    extra_output = run_huggingface_feature(feature_choice, prompt)
+                    response += f"\n\n---\n✨ **{feature_choice} Result:**\n{extra_output}"
+
                 st.markdown(response)
+
             except Exception as e:
                 response = f"Oops! Something went wrong: {e}"
                 st.error(response)
