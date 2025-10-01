@@ -1,8 +1,8 @@
 import os
 import streamlit as st
-import google.generativeai as genai
 from dotenv import load_dotenv
 from huggingface_hub import InferenceClient
+import requests
 
 # --- Load .env for local development ---
 load_dotenv()
@@ -16,23 +16,15 @@ st.set_page_config(
 )
 
 # --- Access API Keys (Cloud -> Secrets, Local -> .env) ---
-secret_key = (
-    st.secrets.get("api", {}).get("GOOGLE_API_KEY") if "api" in st.secrets else os.getenv("GOOGLE_API_KEY")
+deepseek_key = (
+    st.secrets.get("api", {}).get("DEEPSEEK_API_KEY") if "api" in st.secrets else os.getenv("DEEPSEEK_API_KEY")
 )
 hf_key = (
     st.secrets.get("api", {}).get("HUGGINGFACE_API_KEY") if "api" in st.secrets else os.getenv("HUGGINGFACE_API_KEY")
 )
 
-if not secret_key:
-    st.error("🚨 GOOGLE_API_KEY not found! Please set it in Streamlit Secrets (Cloud) or .env (Local).")
-    st.stop()
-
-# --- Configure Gemini ---
-try:
-    genai.configure(api_key=secret_key)
-    model = genai.GenerativeModel('gemini-2.5-flash')
-except Exception as e:
-    st.error(f"Failed to initialize Gemini model: {e}")
+if not deepseek_key:
+    st.error("🚨 DEEPSEEK_API_KEY not found! Please set it in Streamlit Secrets (Cloud) or .env (Local).")
     st.stop()
 
 # --- Configure Hugging Face ---
@@ -43,10 +35,41 @@ if hf_key:
     except Exception as e:
         st.error(f"Failed to initialize Hugging Face client: {e}")
 
+# --- Helper function: DeepSeek API call ---
+def deepseek_chat(prompt, history=None):
+    """
+    Calls DeepSeek V3.1 API with user prompt + optional history.
+    """
+    url = "https://api.deepseek.com/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {deepseek_key}",
+        "Content-Type": "application/json"
+    }
+
+    messages = [{"role": "system", "content": "You are AIVORA, a helpful AI assistant."}]
+    if history:
+        messages.extend(history)
+    messages.append({"role": "user", "content": prompt})
+
+    payload = {
+        "model": "deepseek-chat",
+        "messages": messages,
+        "temperature": 0.7,
+        "max_tokens": 800
+    }
+
+    try:
+        response = requests.post(url, headers=headers, json=payload, timeout=60)
+        response.raise_for_status()
+        data = response.json()
+        return data["choices"][0]["message"]["content"]
+    except Exception as e:
+        return f"⚠️ DeepSeek request failed: {e}"
+
 # --- App Title and Description ---
 st.markdown("<h1 style='text-align: center; color: #4CAF50;'>🤖 AIVORA ✨</h1>", unsafe_allow_html=True)
 st.markdown(
-    "<p style='text-align: center; color: #666; font-size: 1.1em;'>Your Super Intelligent Assistant powered by AI.</p>",
+    "<p style='text-align: center; color: #666; font-size: 1.1em;'>Your Super Intelligent Assistant powered by DeepSeek V3.</p>",
     unsafe_allow_html=True
 )
 st.divider()
@@ -100,13 +123,11 @@ def run_huggingface_feature(feature, text):
             return str(result)
 
         elif feature == "Sentiment Analysis":
-            # Use hosted model
             result = hf_client.text_classification(
                 text,
                 model="cardiffnlp/twitter-roberta-base-sentiment"
             )
 
-            # Map labels to human-readable sentiments
             sentiment_map = {
                 "LABEL_0": "Negative",
                 "LABEL_1": "Neutral",
@@ -131,7 +152,7 @@ for message in st.session_state.messages:
 
 # --- Welcome Message ---
 if not st.session_state.messages:
-    st.info("👋 Hello! I'm AIVORA, your personal AI assistant. How can I help you today?")
+    st.info("👋 Hello! I'm AIVORA (DeepSeek V3). How can I help you today?")
     st.markdown("Feel free to ask me anything!")
 
 # --- Chat Input ---
@@ -143,14 +164,8 @@ if prompt := st.chat_input("Ask AIVORA anything..."):
     with st.chat_message("assistant", avatar="🤖"):
         with st.spinner("AIVORA is thinking..."):
             try:
-                # Step 1: Get Gemini response
-                response_obj = model.generate_content(prompt)
-                if response_obj and hasattr(response_obj, 'text'):
-                    response = response_obj.text
-                elif response_obj and response_obj.candidates:
-                    response = response_obj.candidates[0].content.parts[0].text
-                else:
-                    response = "I'm sorry, I couldn't generate a response. Please try again."
+                # Step 1: Get DeepSeek response
+                response = deepseek_chat(prompt, history=st.session_state.messages)
 
                 # Step 2: Apply Hugging Face feature if selected
                 if feature_choice != "None":
@@ -175,3 +190,4 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
