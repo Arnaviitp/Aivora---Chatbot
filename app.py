@@ -3,6 +3,8 @@ import streamlit as st
 from dotenv import load_dotenv
 from huggingface_hub import InferenceClient
 import requests
+import sseclient
+import json
 
 # --- Load .env for local development ---
 load_dotenv()
@@ -35,49 +37,55 @@ if hf_key:
     except Exception as e:
         st.error(f"Failed to initialize Hugging Face client: {e}")
 
-# --- Helper function: DeepSeek API call ---
-def deepseek_chat(prompt, history=None):
+# --- Helper function: DeepSeek streaming ---
+def deepseek_chat_stream(prompt, history=None):
     """
-    Calls DeepSeek V3 API via OpenRouter with user prompt + optional history.
+    Stream DeepSeek response token by token via OpenRouter SSE.
     """
-    url = "https://openrouter.ai/api/v1/chat/completions"  # ✅ Correct endpoint
+    url = "https://openrouter.ai/api/v1/chat/completions/stream"  # ✅ SSE endpoint
     headers = {
-        "Authorization": f"Bearer {openrouter_key}",   # ✅ Use OpenRouter Key
+        "Authorization": f"Bearer {openrouter_key}",
         "Content-Type": "application/json"
     }
 
-    messages = [{
-    "role": "system",
-    "content": (
+    messages = [{"role": "system", "content": (
         "You are AIVORA, a helpful AI assistant created by Arnav Anand of IIT Patna. "
-        "Whenever someone asks 'Who made you?' or 'Who created you?', always reply: "
-        "'I was created by Arnav Anand from IIT Patna.' "
-    )
-}]
-
+        "Whenever someone asks 'Who made you?' or 'Who created you?', reply: "
+        "'I was created by Arnav Anand from IIT Patna.'"
+    )}]
     if history:
         messages.extend(history)
     messages.append({"role": "user", "content": prompt})
 
     payload = {
-        "model": "deepseek/deepseek-chat-v3.1:free",   # ✅ Correct model name
+        "model": "deepseek/deepseek-chat-v3.1:free",
         "messages": messages,
         "temperature": 0.7,
         "max_tokens": 800
     }
 
-    try:
-        response = requests.post(url, headers=headers, json=payload, timeout=60)
-        response.raise_for_status()
-        data = response.json()
-        return data["choices"][0]["message"]["content"]
-    except Exception as e:
-        return f"⚠️ DeepSeek request failed: {e}"
+    # Make request with stream=True
+    with requests.post(url, headers=headers, json=payload, stream=True, timeout=60) as r:
+        if r.status_code != 200:
+            yield f"⚠️ DeepSeek request failed: {r.status_code} {r.text}"
+            return
+
+        client = sseclient.SSEClient(r)
+        for event in client.events():
+            if event.data == "[DONE]":
+                break
+            try:
+                data = json.loads(event.data)
+                token = data["choices"][0]["delta"].get("content")
+                if token:
+                    yield token  # yields token by token
+            except:
+                continue
 
 # --- App Title and Description ---
 st.markdown("<h1 style='text-align: center; color: #4CAF50;'>🤖 AIVORA ✨</h1>", unsafe_allow_html=True)
 st.markdown(
-    "<p style='text-align: center; color: #666; font-size: 1.1em;'>Your Super Intelligent Assistant powered by AI.</p>",
+    "<p style='text-align: center; color: #666; font-size: 1.1em;'>Your Super Intelligent Assistant powered by DeepSeek V3 (via OpenRouter).</p>",
     unsafe_allow_html=True
 )
 st.divider()
@@ -97,7 +105,6 @@ feature_choice = st.sidebar.selectbox(
     ["None", "Summarization", "Translation", "Sentiment Analysis"]
 )
 
-# For translation target languages
 language_choice = st.sidebar.selectbox(
     "Translate to (if Translation selected):",
     ["French", "Spanish", "German", "Japanese"]
@@ -109,7 +116,7 @@ model_map = {
     "Japanese": "Helsinki-NLP/opus-mt-en-ja"
 }
 
-# --- Helper function for Hugging Face features ---
+# --- HuggingFace extra features ---
 def run_huggingface_feature(feature, text):
     if not hf_client:
         return "⚠️ Hugging Face API not configured."
@@ -129,22 +136,13 @@ def run_huggingface_feature(feature, text):
                 text,
                 model="cardiffnlp/twitter-roberta-base-sentiment"
             )
-
-            sentiment_map = {
-                "LABEL_0": "Negative",
-                "LABEL_1": "Neutral",
-                "LABEL_2": "Positive"
-            }
-
+            sentiment_map = {"LABEL_0": "Negative", "LABEL_1": "Neutral", "LABEL_2": "Positive"}
             if isinstance(result, list) and result:
                 label = sentiment_map.get(result[0]['label'], result[0]['label'])
                 return f"Sentiment: {label} (score: {result[0]['score']:.2f})"
             return str(result)
-
     except Exception as e:
         return f"⚠️ Hugging Face request failed: {e}"
-
-    return None
 
 # --- Display chat messages ---
 for message in st.session_state.messages:
@@ -154,42 +152,36 @@ for message in st.session_state.messages:
 
 # --- Welcome Message ---
 if not st.session_state.messages:
-    st.info("👋 Hello! I'm AIVORA, your personal AI assistant. How can I help you today?")
+    st.info("👋 Hello! I'm AIVORA (DeepSeek V3). How can I help you today?")
     st.markdown("Feel free to ask me anything!")
 
-# --- Chat Input ---
+# --- Chat Input with streaming ---
 if prompt := st.chat_input("Ask AIVORA anything..."):
+    st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user", avatar="🧑‍💻"):
         st.markdown(prompt)
-    st.session_state.messages.append({"role": "user", "content": prompt})
 
     with st.chat_message("assistant", avatar="🤖"):
-        with st.spinner("AIVORA is thinking..."):
-            try:
-                # Step 1: Get DeepSeek response
-                response = deepseek_chat(prompt, history=st.session_state.messages)
+        message_placeholder = st.empty()
+        response_text = ""
+        try:
+            for token in deepseek_chat_stream(prompt, history=st.session_state.messages):
+                response_text += token
+                message_placeholder.markdown(response_text)
+        except Exception as e:
+            message_placeholder.markdown(f"⚠️ Error: {e}")
 
-                # Step 2: Apply Hugging Face feature if selected
-                if feature_choice != "None":
-                    extra_output = run_huggingface_feature(feature_choice, prompt)
-                    response += f"\n\n---\n✨ **{feature_choice} Result:**\n{extra_output}"
+        # Apply HuggingFace features if selected
+        if feature_choice != "None":
+            extra_output = run_huggingface_feature(feature_choice, prompt)
+            response_text += f"\n\n---\n✨ **{feature_choice} Result:**\n{extra_output}"
+            message_placeholder.markdown(response_text)
 
-                st.markdown(response)
-
-            except Exception as e:
-                response = f"Oops! Something went wrong: {e}"
-                st.error(response)
-
-        st.session_state.messages.append({"role": "assistant", "content": response})
+        st.session_state.messages.append({"role": "assistant", "content": response_text})
 
 # --- Footer ---
 st.divider()
 st.markdown(
-    """
-    <p style='text-align: center; color: #888; font-size: 0.8em;'>
-        Created by Arnav Anand IITP.
-    </p>
-    """,
+    "<p style='text-align: center; color: #888; font-size: 0.8em;'>Created by Arnav Anand IITP.</p>",
     unsafe_allow_html=True
 )
-
