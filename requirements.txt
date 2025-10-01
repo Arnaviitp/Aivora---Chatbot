@@ -6,3 +6,4 @@ transformers==4.45.2
 torch
 requests
 sseclient-py
+Pillow
