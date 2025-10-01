@@ -46,7 +46,15 @@ def deepseek_chat(prompt, history=None):
         "Content-Type": "application/json"
     }
 
-    messages = [{"role": "system", "content": "You are AIVORA, a helpful AI assistant."}]
+    messages = [{
+    "role": "system",
+    "content": (
+        "You are AIVORA, a helpful AI assistant created by Arnav Anand of IIT Patna. "
+        "Whenever someone asks 'Who made you?' or 'Who created you?', always reply: "
+        "'I was created by Arnav Anand from IIT Patna.' "
+    )
+}]
+
     if history:
         messages.extend(history)
     messages.append({"role": "user", "content": prompt})
