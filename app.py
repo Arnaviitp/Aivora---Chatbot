@@ -73,7 +73,7 @@ def deepseek_chat_stream(prompt, history=None):
         with requests.post(url, headers=headers, json=payload, stream=True, timeout=60) as r:
             # Silent fallback if daily limit exceeded
             if r.status_code == 429 and hf_client:
-                fallback_text = hf_client.text_generation(prompt, model="gpt2")
+                fallback_text = hf_client.text_generation(prompt, model="bigscience/bloom-560m")
                 yield fallback_text[0]['generated_text']
                 return
 
@@ -93,7 +93,7 @@ def deepseek_chat_stream(prompt, history=None):
     except Exception:
         # If DeepSeek fails, fallback to HuggingFace silently
         if hf_client:
-            fallback_text = hf_client.text_generation(prompt, model="gpt2")
+            fallback_text = hf_client.text_generation(prompt, model="bigscience/bloom-560m")
             yield fallback_text[0]['generated_text']
         else:
             yield "⚠️ Failed to get response from DeepSeek and HuggingFace."
@@ -148,7 +148,7 @@ if st.sidebar.button("Clear Chat History", type="secondary"):
 # --- App Title & Description ---
 st.markdown("<h1 style='text-align: center; color: #4CAF50;'>🤖 AIVORA ✨</h1>", unsafe_allow_html=True)
 st.markdown(
-    "<p style='text-align: center; color: #666; font-size: 1.1em;'>Your Super Intelligent Assistant powered by AI.</p>",
+    "<p style='text-align: center; color: #666; font-size: 1.1em;'>Your Super Intelligent Assistant powered by AI</p>",
     unsafe_allow_html=True
 )
 st.divider()
