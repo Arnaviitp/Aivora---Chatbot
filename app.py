@@ -40,9 +40,9 @@ if hf_key:
 # --- Helper function: DeepSeek streaming ---
 def deepseek_chat_stream(prompt, history=None):
     """
-    Stream DeepSeek response token by token via OpenRouter SSE.
+    Stream DeepSeek response token by token via OpenRouter using stream=True.
     """
-    url = "https://openrouter.ai/api/v1/chat/completions/stream"  # ✅ SSE endpoint
+    url = "https://openrouter.ai/api/v1/chat/completions"  # ✅ Correct URL
     headers = {
         "Authorization": f"Bearer {openrouter_key}",
         "Content-Type": "application/json"
@@ -50,8 +50,7 @@ def deepseek_chat_stream(prompt, history=None):
 
     messages = [{"role": "system", "content": (
         "You are AIVORA, a helpful AI assistant created by Arnav Anand of IIT Patna. "
-        "Whenever someone asks 'Who made you?' or 'Who created you?', reply: "
-        "'I was created by Arnav Anand from IIT Patna.'"
+        "Whenever someone asks 'Who made you?', reply: 'I was created by Arnav Anand from IIT Patna.'"
     )}]
     if history:
         messages.extend(history)
@@ -61,10 +60,11 @@ def deepseek_chat_stream(prompt, history=None):
         "model": "deepseek/deepseek-chat-v3.1:free",
         "messages": messages,
         "temperature": 0.7,
-        "max_tokens": 800
+        "max_tokens": 800,
+        "stream": True  # ✅ Important: enables streaming
     }
 
-    # Make request with stream=True
+    # SSE streaming
     with requests.post(url, headers=headers, json=payload, stream=True, timeout=60) as r:
         if r.status_code != 200:
             yield f"⚠️ DeepSeek request failed: {r.status_code} {r.text}"
@@ -78,14 +78,15 @@ def deepseek_chat_stream(prompt, history=None):
                 data = json.loads(event.data)
                 token = data["choices"][0]["delta"].get("content")
                 if token:
-                    yield token  # yields token by token
+                    yield token
             except:
                 continue
+
 
 # --- App Title and Description ---
 st.markdown("<h1 style='text-align: center; color: #4CAF50;'>🤖 AIVORA ✨</h1>", unsafe_allow_html=True)
 st.markdown(
-    "<p style='text-align: center; color: #666; font-size: 1.1em;'>Your Super Intelligent Assistant powered by DeepSeek V3 (via OpenRouter).</p>",
+    "<p style='text-align: center; color: #666; font-size: 1.1em;'>Your Super Intelligent Assistant powered by AI.</p>",
     unsafe_allow_html=True
 )
 st.divider()
@@ -152,7 +153,7 @@ for message in st.session_state.messages:
 
 # --- Welcome Message ---
 if not st.session_state.messages:
-    st.info("👋 Hello! I'm AIVORA (DeepSeek V3). How can I help you today?")
+    st.info("👋 Hello! I'm AIVORA, your personal AI assistant. How can I help you today?")
     st.markdown("Feel free to ask me anything!")
 
 # --- Chat Input with streaming ---
