@@ -69,7 +69,7 @@ def deepseek_chat(prompt, history=None):
 # --- App Title and Description ---
 st.markdown("<h1 style='text-align: center; color: #4CAF50;'>🤖 AIVORA ✨</h1>", unsafe_allow_html=True)
 st.markdown(
-    "<p style='text-align: center; color: #666; font-size: 1.1em;'>Your Super Intelligent Assistant powered by DeepSeek V3 (via OpenRouter).</p>",
+    "<p style='text-align: center; color: #666; font-size: 1.1em;'>Your Super Intelligent Assistant powered by AI.</p>",
     unsafe_allow_html=True
 )
 st.divider()
@@ -146,7 +146,7 @@ for message in st.session_state.messages:
 
 # --- Welcome Message ---
 if not st.session_state.messages:
-    st.info("👋 Hello! I'm AIVORA (DeepSeek V3). How can I help you today?")
+    st.info("👋 Hello! I'm AIVORA, your personal AI assistant. How can I help you today?")
     st.markdown("Feel free to ask me anything!")
 
 # --- Chat Input ---
