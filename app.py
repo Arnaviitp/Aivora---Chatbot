@@ -16,15 +16,15 @@ st.set_page_config(
 )
 
 # --- Access API Keys (Cloud -> Secrets, Local -> .env) ---
-deepseek_key = (
-    st.secrets.get("api", {}).get("DEEPSEEK_API_KEY") if "api" in st.secrets else os.getenv("DEEPSEEK_API_KEY")
+openrouter_key = (
+    st.secrets.get("api", {}).get("OPENROUTER_API_KEY") if "api" in st.secrets else os.getenv("OPENROUTER_API_KEY")
 )
 hf_key = (
     st.secrets.get("api", {}).get("HUGGINGFACE_API_KEY") if "api" in st.secrets else os.getenv("HUGGINGFACE_API_KEY")
 )
 
-if not deepseek_key:
-    st.error("🚨 DEEPSEEK_API_KEY not found! Please set it in Streamlit Secrets (Cloud) or .env (Local).")
+if not openrouter_key:
+    st.error("🚨 OPENROUTER_API_KEY not found! Please set it in Streamlit Secrets (Cloud) or .env (Local).")
     st.stop()
 
 # --- Configure Hugging Face ---
@@ -38,11 +38,11 @@ if hf_key:
 # --- Helper function: DeepSeek API call ---
 def deepseek_chat(prompt, history=None):
     """
-    Calls DeepSeek V3 API with user prompt + optional history.
+    Calls DeepSeek V3 API via OpenRouter with user prompt + optional history.
     """
-    url = "https://api.deepseek.com/chat/completions"  # ✅ Correct endpoint
+    url = "https://openrouter.ai/api/v1/chat/completions"  # ✅ Correct endpoint
     headers = {
-        "Authorization": f"Bearer {deepseek_key}",
+        "Authorization": f"Bearer {openrouter_key}",   # ✅ Use OpenRouter Key
         "Content-Type": "application/json"
     }
 
@@ -52,7 +52,7 @@ def deepseek_chat(prompt, history=None):
     messages.append({"role": "user", "content": prompt})
 
     payload = {
-        "model": "deepseek-chat",   # ✅ Correct model name
+        "model": "deepseek/deepseek-chat-v3.1:free",   # ✅ Correct model name
         "messages": messages,
         "temperature": 0.7,
         "max_tokens": 800
@@ -69,7 +69,7 @@ def deepseek_chat(prompt, history=None):
 # --- App Title and Description ---
 st.markdown("<h1 style='text-align: center; color: #4CAF50;'>🤖 AIVORA ✨</h1>", unsafe_allow_html=True)
 st.markdown(
-    "<p style='text-align: center; color: #666; font-size: 1.1em;'>Your Super Intelligent Assistant powered by DeepSeek V3.</p>",
+    "<p style='text-align: center; color: #666; font-size: 1.1em;'>Your Super Intelligent Assistant powered by DeepSeek V3 (via OpenRouter).</p>",
     unsafe_allow_html=True
 )
 st.divider()
@@ -109,18 +109,12 @@ def run_huggingface_feature(feature, text):
     try:
         if feature == "Summarization":
             result = hf_client.summarization(text, model="facebook/bart-large-cnn")
-            if hasattr(result, "summary_text"):
-                return result.summary_text
-            if isinstance(result, list) and result and hasattr(result[0], "summary_text"):
-                return result[0].summary_text
-            return str(result)
+            return result["summary_text"] if isinstance(result, dict) else str(result)
 
         elif feature == "Translation":
             translation_model = model_map.get(language_choice, "Helsinki-NLP/opus-mt-en-fr")
             result = hf_client.translation(text, model=translation_model)
-            if hasattr(result, "translation_text"):
-                return result.translation_text
-            return str(result)
+            return result["translation_text"] if isinstance(result, dict) else str(result)
 
         elif feature == "Sentiment Analysis":
             result = hf_client.text_classification(
@@ -190,3 +184,4 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
