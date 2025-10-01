@@ -114,7 +114,7 @@ model_map = {
     "French": "Helsinki-NLP/opus-mt-en-fr",
     "Spanish": "Helsinki-NLP/opus-mt-en-es",
     "German": "Helsinki-NLP/opus-mt-en-de",
-    "Japanese": "Helsinki-NLP/opus-mt-en-ja"
+    "Japanese": "Helsinki-NLP/opus-mt-en-jap"
 }
 
 # --- HuggingFace extra features ---
