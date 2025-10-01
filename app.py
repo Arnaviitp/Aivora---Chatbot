@@ -38,9 +38,9 @@ if hf_key:
 # --- Helper function: DeepSeek API call ---
 def deepseek_chat(prompt, history=None):
     """
-    Calls DeepSeek V3.1 API with user prompt + optional history.
+    Calls DeepSeek V3 API with user prompt + optional history.
     """
-    url = "https://api.deepseek.com/v1/chat/completions"
+    url = "https://api.deepseek.com/chat/completions"  # ✅ Correct endpoint
     headers = {
         "Authorization": f"Bearer {deepseek_key}",
         "Content-Type": "application/json"
@@ -52,7 +52,7 @@ def deepseek_chat(prompt, history=None):
     messages.append({"role": "user", "content": prompt})
 
     payload = {
-        "model": "deepseek-chat",
+        "model": "deepseek-chat",   # ✅ Correct model name
         "messages": messages,
         "temperature": 0.7,
         "max_tokens": 800
@@ -190,4 +190,3 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
-
