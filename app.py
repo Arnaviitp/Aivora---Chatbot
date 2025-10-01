@@ -73,7 +73,7 @@ def deepseek_chat_stream(prompt, history=None):
         with requests.post(url, headers=headers, json=payload, stream=True, timeout=60) as r:
             # Silent fallback if daily limit exceeded
             if r.status_code == 429 and hf_client:
-                fallback_text = hf_client.text_generation(prompt, model="bigscience/bloom-560m")
+                fallback_text = hf_client.text_generation(prompt, model="bigscience/bloomz-560m")
                 yield fallback_text[0]['generated_text']
                 return
 
@@ -93,7 +93,7 @@ def deepseek_chat_stream(prompt, history=None):
     except Exception:
         # If DeepSeek fails, fallback to HuggingFace silently
         if hf_client:
-            fallback_text = hf_client.text_generation(prompt, model="bigscience/bloom-560m")
+            fallback_text = hf_client.text_generation(prompt, model="bigscience/bloomz-560m")
             yield fallback_text[0]['generated_text']
         else:
             yield "⚠️ Failed to get response from DeepSeek and HuggingFace."
